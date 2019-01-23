@@ -1,0 +1,35 @@
+#!/bin/bash
+# javac then java
+_pwd=$(pwd)  # 当前路径
+javafile_path=$1
+_path=${javafile_path%/*}  # java文件所在路径
+java_file_name=${javafile_path##*/}
+tmp_class_path="/home/mopip77/.javaclasstmp/"  # class文件暂时放在此目录下（以方便when-changed 自动）
+
+# 编译并执行
+_complier() {
+    javac $java_file_name -d "$tmp_class_path"
+    _tmp_class_path=${tmp_class_path}${java_file_name%.*}".class"
+    if [ -e $_tmp_class_path ]; then
+        _tmp_pwd=$(pwd)
+        cd $tmp_class_path
+        java ${java_file_name%.*}
+        cd $_tmp_pwd
+    fi
+}
+
+run1(){
+
+if [ $_path == $java_file_name ]; then  # 如果java文件路径没有'/' 的层级，即就在本路径下
+        javac $java_file_name && java ${java_file_name%.*}
+else
+        cd $_path
+        javac $java_file_name && java ${java_file_name%.*}
+        cd $_pwd
+fi
+}
+
+#_complier
+run1
+
+

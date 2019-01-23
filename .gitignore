@@ -1,0 +1,4 @@
+.vscode/
+__pycache__/
+brook
+my_info.py
