@@ -69,6 +69,19 @@ class PhotoScaner(object):
         # res['smms'] = t1.get()
         # res['qiniu'] = t2.get()
         # print(self.mdUrl)
+        import time
+        from pymongo import MongoClient
+        from my_info import DB_PWD, DB_SERVER, DB_USER, DB_PORT
+
+        database = 'pichosting'
+        client = MongoClient('mongodb://{}:{}@{}:{}/{}'.format(
+            DB_USER,
+            DB_PWD,
+            DB_SERVER,
+            DB_PORT,
+            database
+        ))
+        db = client[database]
 
         res = {}
         res['smms'] = self.upload_to_SMMS()
@@ -78,11 +91,22 @@ class PhotoScaner(object):
             self.set_clipboard(self.mdData['url'])
 
         ret_msg = ''
+        database_item = {
+            'name': self.fileName,
+            'date': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+        }
         for host in res.keys():
             if host == self.DAFAULT_PICHOST:
                 ret_msg += '{}{}:\n{}\n'.format(host, '(default)', res[host]['data'])
             else:
                 ret_msg += '{}:\n{}\n'.format(host, res[host]['data'])
+            if 'url' in res[host].keys():
+                database_item[host] = res[host]['url']
+
+        if db['photoscaner'].insert_one(database_item):
+            ret_msg += "上传数据库成功...\n"
+        else:
+            ret_msg += "上传数据库失败...\n"
         return ret_msg
 
     def rend_upload_return(self, status, data, method):
@@ -101,6 +125,7 @@ class PhotoScaner(object):
                 self.mdData['host'] = method
             reply_data['status'] = 'ok'
             reply_data['data'] = "url:  {}\nmd :  {}\n".format(data, md)
+            reply_data['url'] = data
         else:
             reply_data['status'] = 'error'
             reply_data['data'] = "Photo is FAIL to upload...\n" +\
