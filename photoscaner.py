@@ -49,9 +49,10 @@ class PhotoScaner(object):
     def img_to_base64(self):
         import base64
 
-        bs = base64.b64encode(self.img)
-        msg = "base64 result:\n{}\n".format(bs)
+        bs = base64.b64encode(self.img).decode('utf-8')
         self.set_clipboard(bs)
+        displayBs = bs[0:20] + "//////////////////////////" + bs[-20:-1]
+        msg = "base64 result:\n{}\n".format(displayBs)
         return msg
 
     def upload_to_img_bank(self):
