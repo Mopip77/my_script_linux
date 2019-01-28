@@ -138,9 +138,11 @@ class PhotoScaner(object):
         # upload
         url = 'https://sm.ms/api/upload'
 
-        # 好像全路径的上传会失败，只保留文件名上传
+        # 好像全路径或中文的上传会失败，只保留编码后文件名上传
+        from urllib.parse import quote
+        fileName = quote(self.fileName)
         files = {
-            "smfile": (self.fileName, self.img, "image/jpeg"),
+            "smfile": (fileName, self.img, "image/jpeg"),
         }
 
         res = requests.post(url, files=files)
@@ -184,6 +186,44 @@ class PhotoScaner(object):
         finally:
             return reply_data
 
+    def image_search(self):
+        """
+        百度和google搜图，由于分别上传代码有难度且浪费重复时间
+        所以先上传到图床再搜索，使用smms，这里就不重构了
+        并且google会重定向，百度则需要提取一下url
+        """
+        url = 'https://sm.ms/api/upload'
+
+        # 好像全路径或中文的上传会失败，只保留编码后文件名上传
+        from urllib.parse import quote
+        fileName = quote(self.fileName)
+        files = {
+            "smfile": (fileName, self.img, "image/jpeg"),
+        }
+
+        res = requests.post(url, files=files)
+        doc = json.loads(res.text)
+
+        # parse response
+        if doc['code'] == 'error':
+            print('搜图失败...\n' + doc['msg'])
+        else:
+            img_url = doc['data']['url']
+            goo_url = 'https://www.google.com/searchbyimage?image_url={}&btnG=%E6%8C%89%E5%9B%BE%E7%89%87%E6%90%9C%E7%B4%A2'.format(img_url)
+            
+            subprocess_options = ['google-chrome', goo_url]
+            
+            baidu_search_url = 'https://graph.baidu.com/upload?image={}'.format(img_url)
+            r = requests.get(baidu_search_url)
+            doc = json.loads(r.text)
+            if doc['msg'] == "Success":
+                baidu_url = 'https://graph.baidu.com/s?sign=' + doc['data']['sign'] + '&tpl_from=pc'
+                subprocess_options.append(baidu_url)
+
+            # 直接用chrome打开
+            import subprocess
+            subprocess.call(subprocess_options)
+
     # 设置剪贴板
     def set_clipboard(self, sourceStr):
         self.clipboardHasSet = True
@@ -193,10 +233,11 @@ class PhotoScaner(object):
 def main():
     parser = argparse.ArgumentParser()
     """
-    method = [o, b, u]
+    method = [o, b, u, s]
     o -> image ocr
-    b -> iamge to base64
-    u -> upload iamge to image bank(only 'sm.ms' now)
+    b -> image to base64
+    u -> upload image to image bank('sm.ms' and 'qiniu')
+    s -> search image
     """
     parser.add_argument("method", help="use which method")
     parser.add_argument("filepath", help="the target photo path")
@@ -222,6 +263,9 @@ def main():
                 print('完蛋,所有图床失效')
             else:
                 print('({})md link has sent to clipboard...'.format(ps.mdData['host']))
+
+        elif args.method == 's':
+            ps.image_search()
                 
         else:
             print('use -h for help')
@@ -231,3 +275,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # ps = PhotoScaner('/home/mopip77/Downloads/吉冈里帆.jpg')
+    # ps.image_search()
