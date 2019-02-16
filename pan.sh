@@ -11,6 +11,13 @@ then
   ./BaiduPCS-Go ls "$FILE_STORE_PATH"
   ./BaiduPCS-Go cd "$FILE_STORE_PATH"
 	./BaiduPCS-Go
+elif [[ $# -eq 1 && $1 == "bt" ]]
+then
+	# 磁力下载
+	echo -e "\033[46;30m 输入磁力链接:\033[0m:"
+	read btLink
+	./BaiduPCS-Go od add -path=$FILE_STORE_PATH "$btLink"
+	watch -n 3 ./BaiduPCS-Go ls "$FILE_STORE_PATH"
 else
   #需要确定指定文件是否存在
   allFile=$(./BaiduPCS-Go ls "$FILE_STORE_PATH" ) 
