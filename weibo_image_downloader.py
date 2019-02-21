@@ -152,21 +152,21 @@ class WeiboImage(object):
         self.window.title('微博图片下载器')
         self.window.geometry('450x200+400+400')
 
-        self.lb = tk.Label(self.window, text='用户ID:', font=("Noto Mono", 18), height=4)
+        self.lb = tk.Label(self.window, text='用户ID:', font=("Noto Sans Mono CJK SC Regular", 18), height=4)
         self.lb.grid()
 
-        self.ipt = tk.Entry(self.window, font=("Noto Mono", 18), width=20)
+        self.ipt = tk.Entry(self.window, font=("Noto Sans Mono CJK SC Regular", 18), width=20)
         self.ipt.grid(row=0, column=1, columnspan=2)
 
         self.album_type = tk.IntVar()
         self.album_type.set(0)
-        self.chs = tk.Radiobutton(self.window, text=ALBUMTYPE[0], font=("Noto Mono", 15), variable=self.album_type, value=0)
+        self.chs = tk.Radiobutton(self.window, text=ALBUMTYPE[0], font=("Noto Sans Mono CJK SC Regular", 15), variable=self.album_type, value=0)
         self.chs.grid(row=1, column=0)
 
-        self.chs2 = tk.Radiobutton(self.window, text=ALBUMTYPE[1], font=("Noto Mono", 15), variable=self.album_type, value=1)
+        self.chs2 = tk.Radiobutton(self.window, text=ALBUMTYPE[1], font=("Noto Sans Mono CJK SC Regular", 15), variable=self.album_type, value=1)
         self.chs2.grid(row=1, column=1)
 
-        self.but = tk.Button(self.window, text='下载', height=2, width=8, font=("Noto Mono", 13), command=self.check_id)
+        self.but = tk.Button(self.window, text='下载', height=2, width=8, font=("Noto Sans Mono CJK SC Regular", 13), command=self.check_id)
         self.but.grid(row=1, column=2)
 
         self.run()
@@ -183,23 +183,23 @@ class WeiboImage(object):
             self.top.title('下载确认')
             self.top.geometry('450x200+400+400')
             text = "确认要下载用户'{}'的{}吗?".format(self.userInfo[1], ALBUMTYPE[self.album_type.get()])
-            lb = tk.Label(self.top, text=text, font=("Noto Mono", 16), height=4)
+            lb = tk.Label(self.top, text=text, font=("Noto Sans Mono CJK SC Regular", 16), height=4)
             lb.grid(row=0, columnspan=3, sticky=tk.E+tk.W)
 
             self.image_type = tk.IntVar()
             self.image_type.set(0)
-            chs1 = tk.Radiobutton(self.top, text='small', font=("Noto Mono", 15), variable=self.image_type,value=0)
+            chs1 = tk.Radiobutton(self.top, text='small', font=("Noto Sans Mono CJK SC Regular", 15), variable=self.image_type,value=0)
             chs1.grid(row=1, column=0)
-            chs3 = tk.Radiobutton(self.top, text='large', font=("Noto Mono", 15), variable=self.image_type, value=1)
+            chs3 = tk.Radiobutton(self.top, text='large', font=("Noto Sans Mono CJK SC Regular", 15), variable=self.image_type, value=1)
             chs3.grid(row=1, column=1)
 
-            but = tk.Button(self.top, text="确认下载", font=("Noto Mono", 12), command=self.download, height=2)
+            but = tk.Button(self.top, text="确认下载", font=("Noto Sans Mono CJK SC Regular", 12), command=self.download, height=2)
             but.grid(row=2, columnspan=2)
 
 
     def download(self):
         self.top.destroy()
-        self.text = tk.Listbox(self.window, height=15, width=37, font=("Noto Mono", 15))
+        self.text = tk.Listbox(self.window, height=15, width=37, font=("Noto Sans Mono CJK SC Regular", 15))
         self.text.grid(row=2, column=0, columnspan=3)
         self.window.geometry('450x550+420+420')
         has_img = spider(self.userInfo[0], ALBUMTYPE[self.album_type.get()], IMAGETPYPE[self.image_type.get()], self)
