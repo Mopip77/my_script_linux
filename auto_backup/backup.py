@@ -2,6 +2,8 @@ import os
 import shutil
 import time
 
+import font_color as FC
+
 
 class BackUpUtil():
 
@@ -81,7 +83,8 @@ class BackUpUtil():
     def _cleanOnlyExistInDest(self, srcItems, destItems, destPath):
         useless = destItems.difference(srcItems)
         for u in useless:
-            print("\033[0;31m[Del ]\033[0m " + u)
+            
+            print(FC.r("[Del ] ") + u)
             self._delItem(os.path.join(destPath, u))
         
         destItems = destItems.intersection(srcItems)
@@ -93,7 +96,7 @@ class BackUpUtil():
     def _syncFiles(self, curSrcPath, srcFiles, curDestPath, destFiles, lastSyncTime):
         newFiles = srcFiles.difference(destFiles)
         for f in newFiles:
-            print("\033[0;33m[New ]\033[0m " + f)
+            print(FC.y("[New ] ") + f)
             self._copyFile(
                 os.path.join(curSrcPath, f),
                 os.path.join(curDestPath, f)
@@ -125,10 +128,10 @@ class BackUpUtil():
                 data2 = f2.read(1024)
                 if data1 != data2:
                     self._copyFile(srcFile, destFile)
-                    print("\033[0;31m[Diff]\033[0m " + srcFile.split('/')[-1])
+                    print(FC.r("[Diff] ") + srcFile.split('/')[-1])
                     return
                 elif data1 == b'':
-                    print("\033[0;32m[Same]\033[0m " + srcFile.split('/')[-1])
+                    print(FC.g("[Same] ") + srcFile.split('/')[-1])
                     return
 
     def _handleFolder(self, folderRefernece, trace):
@@ -148,10 +151,11 @@ class BackUpUtil():
                     os.path.getmtime(curSrcPath),
                 ])
                 if nearestTime <= lastSyncTime:
-                    print('\033[0;36mNo Change: {}\033[0m'.format(curSrcPath))
+                    
+                    print(FC.c("No Change: {}").format(curSrcPath))
                     continue
 
-            print('\033[0;36mcheck: {}\033[0m'.format(curSrcPath))            
+            print(FC.c("check: {}").format(curSrcPath))            
 
             if not os.path.isdir(curDestPath):
                 os.mkdir(curDestPath)
@@ -175,10 +179,27 @@ class BackUpUtil():
                 return True
         return False
 
+    def _checkBeforeDeleteFormerPath(self, path):
+        if not os.path.isdir(path):
+            return
+        while True:
+            
+            print(("是否删除被弃置的文件夹[" + FC.g("{}") + "]?[y/N]").format(path))
+            check = input().strip()
+
+            if check == '' or check.upper() == 'N':
+                return
+            elif check.upper() == 'Y':
+                shutil.rmtree(path)
+                
+                print(FC.r("文件夹已删除"))
+                return
+
     def sync(self): 
         for fr in self.folderRefernece:
             self.updatedFolderRenference.append(fr[:2] + [self._getStrfTime()])
-            print('\033[0;37;45m正在同步 {}\033[0m'.format(fr[0]))
+            
+            print(FC.w("正在同步 {}", 'm').format(fr[0]))
             self._handleFolder(fr, trace='')
         
         # 写回folderRenference
@@ -195,7 +216,8 @@ class BackUpUtil():
         
         assert not self._checkSameInReference(srcPath, 'src'), "路径已存在在当前备份中"
         
-        print("\n请输入备份目标文件夹根路径\n(留空则用默认路径)[\033[0;33m{}\033[0m]:".format(self.defaultDestPath))
+        
+        print(("\n请输入备份目标文件夹根路径\n(留空则用默认路径)[" + FC.y("{}") + "]:").format(self.defaultDestPath))
         destPath = input()
         if destPath.strip() == '':
             destPath = self.defaultDestPath
@@ -203,7 +225,7 @@ class BackUpUtil():
             os.makedirs(destPath)
         
         srcFolderName = os.path.realpath(srcPath).split('/')[-1]
-        print("\n请输入备份目标文件夹名\n(留空则用源文件夹名)[\033[0;33m{}\033[0m]:".format(srcFolderName))
+        print(("\n请输入备份目标文件夹名\n(留空则用源文件夹名)[" + FC.y("{}") + "]:").format(srcFolderName))
         destFolderName = input()
         if destFolderName.strip() == '':
             destFolderName = srcFolderName
@@ -216,19 +238,21 @@ class BackUpUtil():
         os.makedirs(destPath)
 
         self._appendFolderReference(srcPath, destPath)
-        print("\n\033[0;32m添加成功\033[0m\n原路径:{}\n目标路径:{}".format(srcPath, destPath))
+        print("\n" + FC.g("添加成功") + "\n原路径:{}\n目标路径:{}".format(srcPath, destPath))
 
     def delRenference(self):
-        print("\033[0;37;46m当前备份文件夹信息:\033[0m\n")
+        print(FC.w("当前备份文件夹信息:", 'c') + "\n")
         for idx, ref in enumerate(self.folderRefernece):
-            print("\033[0;32m[{}]\033[0m {}\n     {}\n".format(str(idx).zfill(2), ref[0], ref[1]))
+            print((FC.g('[{}]') + " {}\n     {}\n").format(str(idx).zfill(2), ref[0], ref[1]))
         
-        print("\033[0;31m请输入要删除的序号:\033[0m")
+        print(FC.r('请输入要删除的序号:'))
         idx = input()
 
         try:
             _idx = int(idx)
             assert _idx < len(self.folderRefernece), '序号超出范围'
+
+            srcPath, destPath = self.folderRefernece[_idx][:2]
             
             for idx, fr in enumerate(self.folderRefernece):
                 if idx == _idx:
@@ -239,51 +263,71 @@ class BackUpUtil():
                 else:
                     self.updatedFolderRenference.append(fr[:2] + [self._getStrfTime(fr[2])])
             self._updateFolderReference()
-            print("删除完毕, 记得删除原来的备份路径")
+            print("删除完毕")
+            self._checkBeforeDeleteFormerPath(srcPath)
+            self._checkBeforeDeleteFormerPath(destPath)
         except:
             print('序号不合规范')
 
     def modifyRenference(self):
-        print("\033[0;37;46m当前备份文件夹信息:\033[0m\n")
+        print(FC.white("当前备份文件夹信息:", 'c') + '\n')
         for idx, ref in enumerate(self.folderRefernece):
-            print("\033[0;32m[{}]\033[0m {}\n     {}\n".format(str(idx).zfill(2), ref[0], ref[1]))
+            print((FC.g("[{}]") + " {}\n     {}\n").format(str(idx).zfill(2), ref[0], ref[1]))
         
-        print("\033[0;31m请输入要修改的序号:\033[0m")
-        idx = input()
+        idx = input(FC.r("请输入要修改的序号:"))
 
         try:
             _idx = int(idx)
             assert _idx < len(self.folderRefernece), '序号超出范围'
 
-            print("\n\033[0;32m待修改项:\033[0m:\n原路径:{}\n目标路径:{}\n".format(self.folderRefernece[_idx][0], self.folderRefernece[_idx][1]))
-            print("\n\033[0;37;36m修改\033[0m")
-            print("请输入备份原文件夹路径\n(留空则不修改):")
-            srcPath = input()
-            if srcPath.strip() == '':
-                srcPath = self.folderRefernece[_idx][0]
+            print("\n" + FC.g("待修改项:") + "\n原路径:{}\n目标路径:{}\n".format(self.folderRefernece[_idx][0], self.folderRefernece[_idx][1]))
+            print(FC.g("[1]") + "修改原路径")
+            print(FC.g("[2]") + "修改目标路径")
+            modifyField = int(input(FC.c("请输入修改项:")))
             
-            while not os.path.isdir(srcPath):
-                print("\n该地址不是有效的文件夹,请输入备份源文件夹路径:")
+            srcPath, destPath = self.folderRefernece[_idx][:2]
+            formerSrcPath = srcPath
+            formerDestPath = destPath
+
+            #modifyField = int(input())
+            if modifyField == 1:
+                # 修改原路径
+                print("请输入备份原文件夹路径:")
                 srcPath = input()
 
-            if srcPath != self.folderRefernece[_idx][0]:
-                assert not self._checkSameInReference(srcPath, 'src'), "路径已存在在当前备份中"
+                while not os.path.isdir(srcPath):
+                    print("\n该地址不是有效的文件夹,请输入备份源文件夹路径:")
+                    srcPath = input()
 
-            _t = True
-            while _t:
-                print("\n请输入备份目标文件夹绝对路径\n(留空则不修改):")
-                destPath = input()
-                if not os.path.isdir(destPath):
-                    os.makedirs(destPath)
-                    _t = False
+                if srcPath != formerSrcPath:
+                    assert not self._checkSameInReference(srcPath, 'src'), "路径已存在在当前备份中" 
                 else:
-                    _i = input("该文件夹非空,使用则清空文件夹,确认使用吗?[y/N]")
-                    if _i.strip() == '' or _i.strip().upper() == 'N':
-                        continue
-                    else:
+                    print("文件夹未变动")
+                    return           
+                
+            else:
+                # 修改目标路径
+                _t = True
+                while _t:
+                    print("\n请输入备份目标文件夹绝对路径:")
+                    destPath = input()
+                    if not os.path.isdir(destPath):
+                        os.makedirs(destPath)
                         _t = False
+                    else:
+                        _i = input("该文件夹非空,使用则清空文件夹,确认使用吗?[y/N]")
+                        if _i.strip() == '' or _i.strip().upper() == 'N':
+                            continue
+                        elif _i.upper() == 'Y':
+                            _t = False
+                        else:
+                            print("输入有误")
 
-            assert not self._checkSameInReference(destPath, 'dest'), "路径已存在在当前备份中"
+                if destPath != formerDestPath:
+                    assert not self._checkSameInReference(destPath, 'dest'), "路径已存在在当前备份中"
+                else:
+                    print("文件夹未变动")
+                    return    
 
             for fr in self.folderRefernece:
                 if fr[2] is None:
@@ -292,7 +336,8 @@ class BackUpUtil():
                     self.updatedFolderRenference.append(fr[:2] + [self._getStrfTime(fr[2])])
             self.updatedFolderRenference[_idx] = [srcPath, destPath]
             self._updateFolderReference()
-            print("更新完毕, 记得删除原来的备份路径")
+            print("更新完毕")
+            self._checkBeforeDeleteFormerPath( (formerSrcPath, formerDestPath)[modifyField - 1] )
         except AssertionError as e:
             print(e)
         except:
@@ -300,15 +345,17 @@ class BackUpUtil():
 
     def display(self):
         if len(self.folderRefernece) == 0:
-            print("\033[0;37;42m当前还没有正在备份的文件夹\033[0m\n")
+            
+            print(FC.w("当前还没有正在备份的文件夹", 'g') + "\n")
         else:
-            print("\033[0;37;46m当前备份文件夹信息:\033[0m\n")
+            print(FC.w("当前备份文件夹信息:", 'c') + "\n")
             for idx, ref in enumerate(self.folderRefernece):
                 if ref[2] is None:
-                    print("\033[0;32m[{}]\033[0m Src : {}\n     Dest: {}\n     尚未备份".format(str(idx).zfill(2), ref[0], ref[1]))
+                    print((FC.g("[{}]") + " Src : {}\n     Dest: {}\n     " + FC.y("尚未备份") + "\n").format(str(idx).zfill(2), ref[0], ref[1]))
                 else:
-                    print("\033[0;32m[{}]\033[0m Src : {}\n     Dest: {}\n     最后备份时间:\033[0;33m[{}]".format(
-                        str(idx).zfill(2), ref[0], ref[1], self._getStrfTime(ref[2])))
+                    print( (FC.g("[{}]") + " Src : {}\n     Dest: {}\n     最后备份时间:" + FC.y("[{}]") + "\n").format(
+                        str(idx).zfill(2), ref[0], ref[1], self._getStrfTime(ref[2]) ))
+
 
 if __name__ == "__main__":
     buu = BackUpUtil()
