@@ -50,5 +50,5 @@ else
 
 	# 删除要下载的文件(/app/baidu_shurufa文件夹下的)
 	./BaiduPCS-Go rm ${dlFileNames[*]}
-	exo-open --launch FileManager $DOWNLOAD_PATH
+	nemo $DOWNLOAD_PATH
 fi
