@@ -21,4 +21,3 @@ else
     rm conf
     echo "安装成功, 每日19点自动备份, 也可通过crontab自行修改"
 fi
-q

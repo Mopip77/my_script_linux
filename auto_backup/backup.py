@@ -122,6 +122,11 @@ class BackUpUtil():
                 self._syncFile(_src_f, _dest_f)
 
     def _syncFile(self, srcFile, destFile):
+        # 大小不同直接复制
+        if os.stat(srcFile).st_size != os.stat(destFile).st_size:
+            self._copyFile(srcFile, destFile)
+            return
+
         with open(srcFile, 'rb') as f1, open(destFile, 'rb') as f2:
             while True:
                 data1 = f1.read(1024)
