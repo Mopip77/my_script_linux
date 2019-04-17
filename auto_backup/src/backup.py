@@ -1,24 +1,43 @@
 import os
 import shutil
 import time
+import yaml
 
 import font_color as FC
 
+from multiprocessing import Pool
+from mytime import getStrfTime
+from myfile import fileLastModifyTime, getSubfolderAndFiles
+from trash_manager import TrashManager
 
 class BackUpUtil():
 
-    referencePath = '/'.join(
-        os.path.realpath(__file__).split('/')[:-1] + ['folder_reference.txt']
-    )
-
-    dateTimePatten = "%Y-%m-%d %H:%M:%S"
-
-    defaultDestPath = "/home/mopip77/Desktop/univercity/MintBackup"
+    rootPath = '/'.join( os.path.realpath(__file__).split('/')[:-2] )
+    
+    configPath=  os.path.join(rootPath, 'config.yaml')
+    referencePath = os.path.join(rootPath, 'folder_reference.txt')
 
     def __init__(self):
+        self.dateTimePattern = None
+        self.defaultDestPath = None
+        self.trashPath = None
+        self.expiredPeriod = None
+        self._loadConfig()
         self.folderRefernece = self._getFolderReference()
         self.updatedFolderRenference = []
 
+        self.trashManager = TrashManager(self.trashPath, self.expiredPeriod, self.dateTimePattern)
+
+    def _loadConfig(self):
+        with open(self.configPath, 'r') as f:
+            config = f.read()
+        config = yaml.load(config)
+
+        self.dateTimePattern = config['DATETIME_PATTERN']
+        self.defaultDestPath = config['DEFAULT_DESTPATH']
+        self.trashPath = config['TRASH_FOLDER_PATH']
+        self.expiredPeriod = config['EXPIRED_PERIOD']
+        
     def _getFolderReference(self):
         folderRefernece = []
         with open(self.referencePath, 'r') as f:
@@ -31,11 +50,10 @@ class BackUpUtil():
                 _src, _dest = items[:2]
                 _time = None
                 if items.__len__() > 2:
-                    t_arr = time.strptime(items[2], self.dateTimePatten)
+                    t_arr = time.strptime(items[2], self.dateTimePattern)
                     _time = time.mktime(t_arr)
 
                 folderRefernece.append([_src, _dest, _time])
-
         return folderRefernece
 
     def _updateFolderReference(self):
@@ -52,95 +70,71 @@ class BackUpUtil():
     def _desktopNotify(self):
         text = '\n'.join([_[0] for _ in self.folderRefernece])
         title = "备份完成,同步了{}个文件夹".format(len(self.folderRefernece))
-        os.system('notify-send -t 5000 "{}" "{}"'.format(title, text))
+        os.system('notify-cron -t 5000 "{}" "{}"'.format(title, text))
 
-    def _getStrfTime(self, t=None):
-        if t is None:
-            return time.strftime(self.dateTimePatten, time.localtime())
-        else:
-            t = time.localtime(t)
-            return time.strftime(self.dateTimePatten, t)
-
-    def _getSubfolderAndFiles(self, path):
-        folders = set()
-        files = set()
-
-        for i in os.listdir(path):
-            if os.path.isdir(os.path.join(path, i)):
-                folders.add(i)
-            else:
-                files.add(i)
-        
-        return folders, files
-
-    def _delItem(self, itemPath):
-        if os.path.exists(itemPath):
-            if os.path.isdir(itemPath):
-                shutil.rmtree(itemPath)
-            else:
-                os.remove(itemPath)
-
-    def _cleanOnlyExistInDest(self, srcItems, destItems, destPath):
-        useless = destItems.difference(srcItems)
-        for u in useless:
-            
-            print(FC.r("[Del ] ") + u)
-            self._delItem(os.path.join(destPath, u))
-        
-        destItems = destItems.intersection(srcItems)
-        return destItems
-
-    def _copyFile(self, curPath, destPath):
-        shutil.copy(curPath, destPath)
-
-    def _syncFiles(self, curSrcPath, srcFiles, curDestPath, destFiles, lastSyncTime):
+    def _syncFiles(self, curSrcPath, srcFiles, curDestPath, destFiles, lastSyncTime, destRootPath):
+        """同步curSrcPath文件夹的所有文件到目标文件夹同级的位置"""
+        uselessFiles = destFiles.difference(srcFiles)
         newFiles = srcFiles.difference(destFiles)
+        
+        # 目标文件夹无用文件
+        for f in uselessFiles:
+            print(FC.r("[Del ] ") + f)
+            self.trashManager.moveToTrashbin(os.path.join(curDestPath, f), destRootPath)
+
+        # 新增文件
         for f in newFiles:
             print(FC.y("[New ] ") + f)
-            self._copyFile(
+            shutil.copy(
                 os.path.join(curSrcPath, f),
                 os.path.join(curDestPath, f)
                 )
 
         # 都有的文件
-        for f in destFiles:
+        for f in destFiles.intersection(srcFiles):
             _src_f = os.path.join(curSrcPath, f)
             _dest_f = os.path.join(curDestPath, f)
 
             if lastSyncTime is not None:
-                # 不知道这几个时间具体区别,直接找最近的
-                nearestTime = max([
-                    os.path.getctime(_src_f),
-                    os.path.getmtime(_src_f),
-                ])
-
-                if nearestTime <= lastSyncTime:
+                if fileLastModifyTime(_src_f) <= lastSyncTime:
                     continue
                 else:
-                    self._syncFile(_src_f, _dest_f)
+                    self._syncFile(_src_f, _dest_f, destRootPath)
             else:
-                self._syncFile(_src_f, _dest_f)
+                self._syncFile(_src_f, _dest_f, destRootPath)
 
-    def _syncFile(self, srcFile, destFile):
+    def _syncFile(self, srcFile, destFile, destRootPath):
+        """比较并同步单个文件"""
         # 大小不同直接复制
         if os.stat(srcFile).st_size != os.stat(destFile).st_size:
-            self._copyFile(srcFile, destFile)
+            print(FC.r("[Diff] ") + srcFile.split('/')[-1])
+            self.trashManager.moveToTrashbin(destFile, destRootPath)
+            shutil.copy(srcFile, destFile)
             return
 
         with open(srcFile, 'rb') as f1, open(destFile, 'rb') as f2:
             while True:
-                data1 = f1.read(1024)
-                data2 = f2.read(1024)
+                data1 = f1.read(4096)
+                data2 = f2.read(4096)
                 if data1 != data2:
-                    self._copyFile(srcFile, destFile)
+                    self.trashManager.moveToTrashbin(destFile, destRootPath)
+                    shutil.copy(srcFile, destFile)
                     print(FC.r("[Diff] ") + srcFile.split('/')[-1])
                     return
                 elif data1 == b'':
                     print(FC.g("[Same] ") + srcFile.split('/')[-1])
                     return
 
-    def _handleFolder(self, folderRefernece, trace):
-        srcPath, destPath, lastSyncTime = folderRefernece
+    def _syncFolders(self, srcFolders, curDestPath, destFolders, destRootPath):
+        """更新当前文件夹下所有文件夹,仅删除,不涉及文件夹内文件的修改"""
+        uselessFolders = destFolders.difference(srcFolders)
+
+        for f in uselessFolders:
+            self.trashManager.moveToTrashbin(os.path.join(curDestPath, f), destRootPath)
+
+    def _handleFolder(self, folderReference, trace):
+        """同步当前传入的folderReference"""
+        srcPath, destPath, lastSyncTime = folderReference
 
         srcQueue = [trace]
         # 循环遍历,不用递归了
@@ -150,28 +144,18 @@ class BackUpUtil():
             curSrcPath = os.path.join(srcPath, trace)
             curDestPath = os.path.join(destPath, trace)
             
-            if lastSyncTime is not None:
-                nearestTime = max([
-                    os.path.getctime(curSrcPath),
-                    os.path.getmtime(curSrcPath),
-                ])
-                if nearestTime <= lastSyncTime:
-                    
-                    print(FC.c("No Change: {}").format(curSrcPath))
-                    continue
-
+            # 文件夹内部文件改变,文件夹的修改时间并不会变,所以以此判断可能会造成漏判
             print(FC.c("check: {}").format(curSrcPath))            
 
             if not os.path.isdir(curDestPath):
-                os.mkdir(curDestPath)
+                os.makedirs(curDestPath)
             # 获得源,目标路径文件夹和文件
-            srcFolders, srcFiles = self._getSubfolderAndFiles(curSrcPath)
-            destFolders, destFiles = self._getSubfolderAndFiles(curDestPath)
-            # 删除目标路径不存在文件(夹)
-            destFolders = self._cleanOnlyExistInDest(srcFolders, destFolders, curDestPath)
-            destFiles = self._cleanOnlyExistInDest(srcFiles, destFiles, curDestPath)
-            # 比对更新文件
-            self._syncFiles(curSrcPath, srcFiles, curDestPath, destFiles, lastSyncTime)
+            srcFolders, srcFiles = getSubfolderAndFiles(curSrcPath)
+            destFolders, destFiles = getSubfolderAndFiles(curDestPath)
+            # 比对更新当前文件夹下所有文件夹
+            self._syncFolders(srcFolders, curDestPath, destFolders, destPath)
+            # 比对更新当前文件夹下所有文件
+            self._syncFiles(curSrcPath, srcFiles, curDestPath, destFiles, lastSyncTime, destPath)
             # 进入下个文件夹
             srcQueue.extend([os.path.join(trace, srcF) for srcF in srcFolders])
 
@@ -184,7 +168,8 @@ class BackUpUtil():
                 return True
         return False
 
-    def _checkBeforeDeleteFormerPath(self, path):
+    def _checkAndDeleteFormerPath(self, path):
+        """删除修改前(被弃用)的文件夹路径"""
         if not os.path.isdir(path):
             return
         while True:
@@ -200,12 +185,12 @@ class BackUpUtil():
                 print(FC.r("文件夹已删除"))
                 return
 
-    def sync(self): 
-        for fr in self.folderRefernece:
-            self.updatedFolderRenference.append(fr[:2] + [self._getStrfTime()])
-            
-            print(FC.w("正在同步 {}", 'm').format(fr[0]))
-            self._handleFolder(fr, trace='')
+    def sync(self, n_jobs=4):
+        pool = Pool(n_jobs)
+
+        self.updatedFolderRenference = [fr[:2] + [getStrfTime(self.dateTimePattern)] for fr in self.folderRefernece]
+        jobs = [pool.apply_async(self._handleFolder, args=(fr, '')) for fr in self.folderRefernece]
+        [j.get() for j in jobs]
         
         # 写回folderRenference
         self._updateFolderReference()
@@ -266,11 +251,12 @@ class BackUpUtil():
                 if fr[2] is None:
                     self.updatedFolderRenference.append(fr[:2])
                 else:
-                    self.updatedFolderRenference.append(fr[:2] + [self._getStrfTime(fr[2])])
+                    self.updatedFolderRenference.append(fr[:2] + [getStrfTime(self.dateTimePattern, fr[2])])
             self._updateFolderReference()
             print("删除完毕")
-            self._checkBeforeDeleteFormerPath(srcPath)
-            self._checkBeforeDeleteFormerPath(destPath)
+            self._checkAndDeleteFormerPath(srcPath)
+            self._checkAndDeleteFormerPath(destPath)
+            self._checkAndDeleteFormerPath(self.trashManager.getDestRootPathInTrash(destPath))
         except:
             print('序号不合规范')
 
@@ -303,12 +289,12 @@ class BackUpUtil():
                 while not os.path.isdir(srcPath):
                     print("\n该地址不是有效的文件夹,请输入备份源文件夹路径:")
                     srcPath = input()
-
-                if srcPath != formerSrcPath:
-                    assert not self._checkSameInReference(srcPath, 'src'), "路径已存在在当前备份中" 
-                else:
-                    print("文件夹未变动")
-                    return           
+        
+                if srcPath == formerSrcPath:
+                    print("文件夹未变动")     
+                
+                # 源文件夹可以被多次映射
+                # assert not self._checkSameInReference(srcPath, 'src'), "路径已存在在当前备份中" 
                 
             else:
                 # 修改目标路径
@@ -330,6 +316,14 @@ class BackUpUtil():
 
                 if destPath != formerDestPath:
                     assert not self._checkSameInReference(destPath, 'dest'), "路径已存在在当前备份中"
+
+                    drpit = self.trashManager.getDestRootPathInTrash(formerDestPath)
+                    if os.path.exists(drpit):
+                        shutil.move(
+                            drpit,
+                            self.trashManager.getDestRootPathInTrash(destPath)
+                        )
+
                 else:
                     print("文件夹未变动")
                     return    
@@ -338,11 +332,11 @@ class BackUpUtil():
                 if fr[2] is None:
                     self.updatedFolderRenference.append(fr[:2])
                 else:
-                    self.updatedFolderRenference.append(fr[:2] + [self._getStrfTime(fr[2])])
+                    self.updatedFolderRenference.append(fr[:2] + [getStrfTime(self.dateTimePattern, fr[2])])
             self.updatedFolderRenference[_idx] = [srcPath, destPath]
             self._updateFolderReference()
             print("更新完毕")
-            self._checkBeforeDeleteFormerPath( (formerSrcPath, formerDestPath)[modifyField - 1] )
+            self._checkAndDeleteFormerPath( (formerSrcPath, formerDestPath)[modifyField - 1] )
         except AssertionError as e:
             print(e)
         except:
@@ -359,10 +353,24 @@ class BackUpUtil():
                     print((FC.g("[{}]") + " Src : {}\n     Dest: {}\n     " + FC.y("尚未备份") + "\n").format(str(idx).zfill(2), ref[0], ref[1]))
                 else:
                     print( (FC.g("[{}]") + " Src : {}\n     Dest: {}\n     最后备份时间:" + FC.y("[{}]") + "\n").format(
-                        str(idx).zfill(2), ref[0], ref[1], self._getStrfTime(ref[2]) ))
+                        str(idx).zfill(2), ref[0], ref[1], getStrfTime(self.dateTimePattern, ref[2]) ))
 
+    def run(self, n_jobs=4):
+        self.sync(n_jobs)
+        self.trashManager.deleteExpiredFiles()
+
+    def test(self):
+        self.updatedFolderRenference = [fr[:2] + [getStrfTime(self.dateTimePattern)] for fr in self.folderRefernece]
+        
+        # for fr in self.folderRefernece:
+        self._handleFolder(self.folderRefernece[2], "")
+        
+        # 写回folderRenference
+        self._updateFolderReference()
+        # 桌面提醒
+        self._desktopNotify()
 
 if __name__ == "__main__":
     buu = BackUpUtil()
-    # buu.sync()
-    buu.delRenference()
+    buu.test()
+    # buu.delRenference()
