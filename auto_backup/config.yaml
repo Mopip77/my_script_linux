@@ -1,4 +1,0 @@
-DATETIME_PATTERN: "%Y-%m-%d_%H:%M:%S"
-DEFAULT_DESTPATH: /home/mopip77/Desktop/univercity/MintBackup
-TRASH_FOLDER_PATH: /home/mopip77/Desktop/univercity/MintBackup/_cycle_
-EXPIRED_PERIOD: 604800 # 60 * 60 * 24 * 7

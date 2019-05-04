@@ -1,7 +1,8 @@
-import argparse
 import json
+import sys
 import requests
 import pyperclip
+import os
 
 
 class PhotoScaner(object):
@@ -31,17 +32,18 @@ class PhotoScaner(object):
         with open(filepath, 'rb') as f:
             return f.read()
 
-    def img_ocr(self):
+    def img_ocr(self, linefeed=False):
         from my_info import BAIDU_APP_ID, BAIDU_API_KEY, BAIDU_SECRET_KEY
         from aip import AipOcr
         
         client = AipOcr(BAIDU_APP_ID, BAIDU_API_KEY, BAIDU_SECRET_KEY)
 
         result = client.basicGeneral(self.img)
-        text_line = result['words_result']
-        res = ''
-        for line in text_line:
-            res += (line['words'])  # + '\n')
+        text_line = [line['words'] for line in result['words_result']]
+        if linefeed is True:
+            res = '\n'.join(text_line)
+        else:
+            res = ''.join(text_line)
         msg = "OCR result:\n{}\n".format(res)
         self.set_clipboard(res)
         return msg
@@ -231,31 +233,45 @@ class PhotoScaner(object):
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    """
-    method = [o, b, u, s]
-    o -> image ocr
-    b -> image to base64
-    u -> upload image to image bank('sm.ms' and 'qiniu')
-    s -> search image
-    """
-    parser.add_argument("method", help="use which method")
-    parser.add_argument("filepath", help="the target photo path")
-    args = parser.parse_args()
+    instruction="""
+usage: pho <method> [option] <path>
+
+<method>:
+  o [LF]     image ocr (using LF: return the result with linefeed)
+  b          image to base64
+  u          upload image to image bank('sm.ms' and 'qiniu')
+  s          search image
+
+if using pho without <path> the path will be replaced by the latest screenshot
+"""
 
     try:
-        fp = args.filepath
+        # process args
+        args = sys.argv
+        fp = args.pop()
+        method = args[1]
+        option = args[2:]
+        
+        if not os.path.isfile(fp):
+            print("该文件不存在,请输入正确的文件地址")
+            return
+    except:
+        print("命令格式不正确, 请用pho -h查看使用说明")
+        return
+    
+
+    try:
         ps = PhotoScaner(fp)
 
-        if args.method == 'o':
-            print(ps.img_ocr())
+        if method == 'o':
+            print(ps.img_ocr(linefeed='-lf' in option))
             print('ocr result has sebt to clipboard...')
 
-        elif args.method == 'b':
+        elif method == 'b':
             print(ps.img_to_base64())
             print('base64 code has sent to clipboard...')
 
-        elif args.method == 'u':
+        elif method == 'u':
             rep = ps.upload_to_img_bank()
             print(rep)
             # 所有图床失效,未复制到剪贴板
@@ -264,9 +280,11 @@ def main():
             else:
                 print('({})md link has sent to clipboard...'.format(ps.mdData['host']))
 
-        elif args.method == 's':
+        elif method == 's':
             ps.image_search()
                 
+        elif method == '-h':
+            print(instruction)
         else:
             print('use -h for help')
     except Exception as e:

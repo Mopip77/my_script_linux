@@ -35,20 +35,29 @@ else
 	do
 	  # 前五行无用, 也不用sed删了, 直接加一下吧
 		let num=i+5
-		dlFileNames[$index]=$(cat $TMP_LIST_FILE | awk 'NR=="'$num'"{print $5}')
+		# 由于会有名字中会有空格,直接用awk的print$5,会指定不全,所以要从5到fieldNum都打印
+		fileName=($(cat $TMP_LIST_FILE | awk 'BEGIN{i=4}NR=="'$num'"{while(i++<NF) print $i}'))
+		dlFileNames[$index]=`echo ${fileName[@]}`
+		#fieldNum=$(cat $TMP_LIST_FILE | awk 'NR=="'$num'"{print NF}')
+		#queryStr=""
+		#for i in `seq 5 $fieldNum`;do queryStr="$queryStr\$$i,";done
+		 #去掉queryStr最后的逗号
+		#dlFileNames[$index]=$(cat $TMP_LIST_FILE | awk 'NR=="'$num'"{print ${queryStr:0:${#queryStr}-1}}')
 		let index=index+1
 	done
 
+	echo $dlFileNames
+
 	# 转移所有下载文件
 	./BaiduPCS-Go cd $FILE_STORE_PATH
-	./BaiduPCS-Go cp ${dlFileNames[*]} /apps/baidu_shurufa
+	for i in "${dlFileNames[@]}";do ./BaiduPCS-Go cp "$i" /apps/baidu_shurufa;done
 	
   # 下载所有文件
   ./BaiduPCS-Go cd /apps/baidu_shurufa/
 	./BaiduPCS-Go config set -appid=265486
-  ./BaiduPCS-Go d ${dlFileNames[*]}
+	for i in "${dlFileNames[@]}";do ./BaiduPCS-Go d "$i";done
 
 	# 删除要下载的文件(/app/baidu_shurufa文件夹下的)
-	./BaiduPCS-Go rm ${dlFileNames[*]}
+	for i in "${dlFileNames[@]}";do ./BaiduPCS-Go rm "$i";done
 	nemo $DOWNLOAD_PATH
 fi
