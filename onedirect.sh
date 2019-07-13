@@ -19,28 +19,45 @@ print_usage() {
   get                   弹出上次保存的某个目录的第一个直链
   path                  获取某个文件的直链
   -r path [re]          获取某个文件夹下所有直链并保存,可以使用正则匹配
+	trans                 通过网页获得文件的共享链接可直接用trans转换成直链
 
 直链格式为rclone的默认路径格式例如 one:/share/a.mkv
 获取ondrive的视频直链, 会直接复制到剪贴板, 可用播放器直接播放"
 }
 
 url_transform() {
+
+		# person onedrive
     # 传入
     # https://onedrive.live.com/redir?resid=6EB85EA240738233!2178&authkey=!AAjIornQjEBG8NA
     # 生成
     # https://storage.live.com/items/$[resid]?authkey=$[authkey]
-    local params=`echo "${1}" | cut -d'?' -f2`
-    local p1=`echo "${params}" | cut -d'&' -f1`
-    local p2=`echo "${params}" | cut -d'&' -f2`
-    if [ `echo ${p2} | cut -d'=' -f1` = "resid" ]
-    then
-        local temp="${p1}"
-        p1="${p2}"
-        p2="${temp}"
-    fi
-    local resid=`echo ${p1} | cut -d'=' -f2`
-    local authkey=`echo ${p2} | cut -d'=' -f2`
-    echo "https://storage.live.com/items/${resid}?authkey=${authkey}"
+
+		# busniess onedrive
+		# 传入
+		# https://swccd1-my.sharepoint.com/personal/mopip77_5tb_fun/_layouts/15/guestaccess.aspx\?share\=EWbVjempPgRAsHohbbdn6cgBfGtMPK3n6JYT7krZcgd0cQ\&cid\=d5fab802-0f98-4416-b52b-27f285063f10
+
+		# 生成
+		# https://swccd1-my.sharepoint.com/personal/mopip77_5tb_fun/_layouts/15/guestaccess.aspx\?share\=EWbVjempPgRAsHohbbdn6cgBfGtMPK3n6JYT7krZcgd0cQ\&cid\=d5fab802-0f98-4416-b52b-27f285063f10&download=1
+		# 其中download = 1需要获得share地址后手动添加, 添加以后可以下载, 当然也可以直接播放
+
+		if [[ "${1}" =~ "sharepoint" ]]
+		then
+			echo "${1}&download=1"
+		else
+			local params=`echo "${1}" | cut -d'?' -f2`
+			local p1=`echo "${params}" | cut -d'&' -f1`
+			local p2=`echo "${params}" | cut -d'&' -f2`
+			if [ `echo ${p2} | cut -d'=' -f1` = "resid" ]
+			then
+					local temp="${p1}"
+					p1="${p2}"
+					p2="${temp}"
+			fi
+			local resid=`echo ${p1} | cut -d'=' -f2`
+			local authkey=`echo ${p2} | cut -d'=' -f2`
+			echo "https://storage.live.com/items/${resid}?authkey=${authkey}"
+		fi
 }
 
 # 传入onedrive路径
@@ -64,6 +81,10 @@ then
     link=`echo "${str}" | awk -F, '{print $2}'`
     echo -e "\033[36m[Name]\033[0m ${filename}\n\033[36m[Path]\033[0m ${link}"
     echo "${link}" | xclip -in -selection clipboard
+elif [ "$1" = "trans" ]
+then
+    playable_link=$(curl -s --head "$1" | grep location | awk '{print $2}')
+    url_transform "${playable_link}"
 elif [ "$1" = "-r" ]
 then
     # 如果没传入正则, 使用grep -E "" 也就是全匹配所以这里不做区分 $3为正则
