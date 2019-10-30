@@ -32,7 +32,7 @@ class PhotoScaner(object):
         with open(filepath, 'rb') as f:
             return f.read()
 
-    def img_ocr(self, linefeed=False):
+    def img_ocr(self, linefeed=False, fullWidthForm=False):
         from my_info import BAIDU_APP_ID, BAIDU_API_KEY, BAIDU_SECRET_KEY
         from aip import AipOcr
         
@@ -44,6 +44,10 @@ class PhotoScaner(object):
             res = '\n'.join(text_line)
         else:
             res = ''.join(text_line)
+        # res format punctuation
+        if fullWidthForm is True:
+            res = self.strH2F(res)
+
         msg = "OCR result:\n{}\n".format(res)
         self.set_clipboard(res)
         return msg
@@ -231,13 +235,26 @@ class PhotoScaner(object):
         self.clipboardHasSet = True
         pyperclip.copy(sourceStr)
 
+    # 使用全角符号替换半角符号
+    def strH2F(self, string):
+        form = {
+            ',': '，', '.': '。', '!': '！', '?': '？', '(': '（', ')': '）', '[': '【', ']': '】', ':': '：'
+        }
+        result = ""
+        for uchar in string:
+            if form.get(uchar) != None:
+                uchar = form.get(uchar)
+            result += uchar
+        return result
+
+
 
 def main():
     instruction="""
 usage: pho <method> [option] <path>
 
 <method>:
-  o [LF]     image ocr (using LF: return the result with linefeed)
+  o [LF] [F] image ocr (using LF: return the result with linefeed, F: transform HalfWidth to FullWidth)
   b          image to base64
   u          upload image to image bank('sm.ms' and 'qiniu')
   s          search image
@@ -264,7 +281,7 @@ if using pho without <path> the path will be replaced by the latest screenshot
         ps = PhotoScaner(fp)
 
         if method == 'o':
-            print(ps.img_ocr(linefeed='-lf' in option))
+            print(ps.img_ocr(linefeed='-lf' in option, fullWidthForm='-f' in option))
             print('ocr result has sebt to clipboard...')
 
         elif method == 'b':
