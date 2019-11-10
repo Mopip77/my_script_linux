@@ -7,22 +7,25 @@
 #   并且在最后的mpv 地址需要echo出来, 而且不能加双引号
 ##
 
-LINK_SAVE_FILE="${HOME}/.onedrive_direct_links.txt"
+PLAYLIST_BASE_FOULDER="${HOME}/.local/onedirect/playlist"
 TMP_LINK_LIST_PREFIX="onedrive_direct_link_"
+PLAYABLE_EXT=".mp4|.mp3|.avi|.webm|.mkv"
 # 剪贴板复制命令 mac下可使用pbcopy， Linux可用clipcopy，自己尝试更改
 COPY_COMMAND="pbcopy" && [ `uname` != "Darwin" ] && COPY_COMMAND="clipcopy"
 
 print_usage() {
-    echo -e "\033[33m[Usage] \033[0m
-  onedirect [-option] command path
-\033[32m[Command]\033[0m
-  show                  查看上次保存的某个目录的直链 (不带path)
-  get                   弹出上次保存的某个目录的第一个直链 (不带path) (show不会删除记录，get会)
-  path                  获取某个文件的直链 (rclone的路径/path命令也可以缺省)
-  -r path [re]          获取某个文件夹下所有直链并保存,可以使用正则匹配 (rclone的路径)
-  trans                 通过网页获得文件的共享链接可直接用trans转换成直链 (网页分享的url，并且需要设置公开权限)
-直链格式为rclone的默认路径格式例如 one:/share/a.mkv
-获取ondrive的视频直链, 会直接复制到剪贴板, 可用播放器直接播放"
+    echo -e "该脚本在基础的获取onedrive直链功能上额外增加了一些扩展功能，并且可以和rclone配合使用
+
+\033[32mCommand，接收参数类型分类\033[0m
+rclone路径:
+  pl                                      查看playlist
+  dl [-r <regex>] [-p <playlist>] <path>  获取某个文件夹下所有直链并保存,可以使用正则匹配
+  show [-p <playlist>]                    查看上次保存的某个目录的直链
+  get [-p <playlist>]                     弹出上次保存的某个目录的第一个直链(show不会删除记录，get会)
+  play [-d] [-p <playlist>]               直接播放，只会展示视频扩展名的文件，并且能自动识别对应字幕文件 (-d 删除原纪录)
+
+onedrive分享链接 或 rclone路径:
+  trans <path>                            转换成直链"
 }
 
 url_transform() {
@@ -43,7 +46,13 @@ url_transform() {
 
 		if [[ "${1}" =~ "sharepoint" ]]
 		then
-			echo "${1}&download=1"
+            # 现在rclone link获取的直链可能不带?e=xxxx,所以需要添加的不是&download=1而是?download=1
+            if [[ "${1}" =~ "?" ]]
+            then
+			    echo "${1}&download=1"
+            else
+                echo "${1}?download=1"
+            fi
 		else
             # echo "url:$1"
             local playable_link=$(curl -s --head "$1" | grep Location | awk '{print $2}')
@@ -63,54 +72,72 @@ url_transform() {
 		fi
 }
 
-# 传入onedrive路径
 get_real_path() {
-    local share_link=$(rclone link "${1}")
-    url_transform "${share_link}"
+    # 既可传入rclone的路径，也可传入onedrive分享链接(两者以是否为http开头区分)，最终返回直链
+    share_link=${1}
+    if [ "${1:0:4}" != "http" ]
+    then 
+        share_link=$(rclone link "${1}")
+    fi
+    playable_link=`url_transform "${share_link}"`
+    echo ${playable_link}
 }
 
-if [[ $# -eq 0 || "$1" = "-h" ]]
-then
-    print_usage
-elif [ "$1" = "show" ]
-then
-    awk -F, '{printf("\033[36m%s\033[0m,%s\n\n", $1, $2)}' "${LINK_SAVE_FILE}"
-    # cat ${onedirve_direct_links}
-elif [ "$1" = "get" ]
-then
-    str=`head -n1 ${LINK_SAVE_FILE}` && sed -i '1d' ${LINK_SAVE_FILE}
-    filename=`echo "${str}" | awk -F, '{print $1}'`
-    link=`echo "${str}" | awk -F, '{print $2}'`
-    echo -e "\033[36m[Name]\033[0m ${filename}\n\033[36m[Path]\033[0m ${link}\n链接已复制到剪贴板, 可用播放器直接播放"
-    echo "${link}" | `$COPY_COMMAND`
-elif [ "$1" = "trans" ]
-then
-    playable_link=`url_transform "${2}"`
-    echo -e "${playable_link}\n链接已复制到剪贴板, 可用播放器直接播放"
-    echo "${playable_link}" | `$COPY_COMMAND`
-elif [ "$1" = "-r" ]
-then
-    # 如果没传入正则, 使用grep -E "" 也就是全匹配所以这里不做区分 $3为正则
-    OLD_IFS="$IFS"
-	IFS=$'\n'  # 换行
-    filenames=($(rclone lsf "$2" | grep -E "$3"))
-    IFS=$OLD_IFS
+exit_if_empty_string() {
+    if [ -z $1 ]
+    then
+        exit 1
+    fi
+}
 
-    prefix_path="${2}"
-    [ "${prefix_path: -1}" != "/" ] && prefix_path="${prefix_path}/"
+try_delete_file() {
+    local filename="$1"
+    if [[ -f ${filename} && -z `cat ${filename}` ]]
+    then
+        rm ${filename}
+    fi
+}
+
+
+preprocess() {
+    mkdir -p ${PLAYLIST_BASE_FOULDER}
+}
+
+download_func() {
+    local onedrive_path=${@: -1}
+    exit_if_empty_string ${onedrive_path}
+    local regex_expression=""
+    while getopts "r:p:" opt; do
+        case $opt in
+            r)
+                regex_expression="${OPTARG}"
+            ;;
+            p)
+                playlist_name="${OPTARG}"
+            ;;
+        esac
+    done
+
+    # 如果没传入正则, 使用grep -E "" 即为全匹配
+    OLD_IFS="$IFS"
+    IFS=$'\n'  # 换行
+    filenames=($(rclone lsf "${onedrive_path}" | grep -E "${regex_expression}"))
+    IFS=$OLD_IFS
     
-    [ -e ${LINK_SAVE_FILE} ] && rm ${LINK_SAVE_FILE}
-    
+    [ "${onedrive_path: -1}" != "/" ] && onedrive_path="${onedrive_path}/"
+
+    playlist_path="${PLAYLIST_BASE_FOULDER}/${playlist_name}"
+    [ -e ${playlist_path} ] && rm ${playlist_path}
+
     # 由于不会在并发下保存原有顺序, 所以获取和保存链接分开执行
     # 获取链接
     for idx in `seq 0 $((${#filenames[@]} - 1))`
     do
         {
             fn="${filenames[$idx]}"
-            # 暂存在/dev/shm下, 减少磁盘的io
-            get_real_path "${prefix_path}${fn}" > "/dev/shm/${TMP_LINK_LIST_PREFIX}${idx}"
+            # 暂存在/dev/shm下, 减少磁盘的io, mac没有，哎。。。
+            get_real_path "${onedrive_path}${fn}" > "/tmp/${TMP_LINK_LIST_PREFIX}${idx}"
             echo -e "\033[32m[Done]\033[0m ${fn}"
-            # echo "${fn},${real_path[$i]}" >> ${LINK_SAVE_FILE}
         }&  # 多线程, 全部后台执行
     done
     wait
@@ -119,14 +146,138 @@ then
     for idx in `seq 0 $((${#filenames[@]} - 1))`
     do
         fn="${filenames[$idx]}"
-        # real_path=cat "/dev/shm/${TMP_LINK_LIST_PREFIX}${idx}"
-        echo "${fn},$(sudo cat /dev/shm/${TMP_LINK_LIST_PREFIX}${idx})" >> ${LINK_SAVE_FILE}
+        echo "${fn},$(cat /tmp/${TMP_LINK_LIST_PREFIX}${idx})" >> ${playlist_path}
     done
 
     # delete tmp
-    sudo rm /dev/shm/${TMP_LINK_LIST_PREFIX}*
-else
-    real_path=`get_real_path "$1"`
-    echo "${real_path}\n链接已复制到剪贴板, 可用播放器直接播放"
-    echo "${real_path}" | `$COPY_COMMAND`
-fi
+    rm /tmp/${TMP_LINK_LIST_PREFIX}*
+}
+
+show_func() {
+    while getopts "p:" opt; do
+        case $opt in
+            p)
+                playlist_name="${OPTARG}"
+            ;;
+        esac
+    done
+    local playlist_path="${PLAYLIST_BASE_FOULDER}/${playlist_name}"
+    if [ ! -f ${playlist_path} ]
+    then
+        echo "该播放列表不存在"
+        return
+    fi
+
+    awk -F, '{printf("\033[36m%s\033[0m,%s\n\n", $1, $2)}' "${playlist_path}"
+}
+
+get_func() {
+    while getopts "p:" opt; do
+        case $opt in
+            p)
+                playlist_name="${OPTARG}"
+            ;;
+        esac
+    done
+    playlist_path="${PLAYLIST_BASE_FOULDER}/${playlist_name}"
+    if [ ! -f ${playlist_path} ]
+    then
+        echo "该播放列表不存在"
+        return
+    fi
+    local str=`head -n1 ${playlist_path}`
+    gsed -i '1d' ${playlist_path}
+    local filename=${str%,*}
+    local link=${str##*,}
+    try_delete_file ${playlist_path}
+    echo -e "\033[36m[Name]\033[0m ${filename}\n\033[36m[Path]\033[0m ${link}\n链接已复制到剪贴板, 可用播放器直接播放"
+    echo "${link}" | `$COPY_COMMAND`
+}
+
+play_func() {
+    local delete_after_play=false
+    while getopts "dp:" opt; do
+        case $opt in
+            d)
+                delete_after_play=true
+            ;;
+            p)
+                playlist_name="${OPTARG}"
+            ;;
+        esac
+    done
+
+    local playlist_path="${PLAYLIST_BASE_FOULDER}/${playlist_name}"
+    if [ ! -f ${playlist_path} ]
+    then
+        echo "该播放列表不存在"
+        return
+    fi
+
+    # 用于先展示playlist_path文件，然后手动选择视频文件，并且会匹配出相应的字幕文件，播放后删除playlist_path的所选项以及其字幕文件
+    # 行数
+    ln=`cat  ${playlist_path} | grep -E ${PLAYABLE_EXT} | wc -l`
+    # 显示可播放列表，用于选择
+    cat ${playlist_path} | grep -E ${PLAYABLE_EXT} | awk -F, '{print "\033[32m["NR"]\033[0m" " " $1}'
+    echo -e "\n请输入需要播放的视频序号："
+    read line_num
+    if [[ ${line_num} -gt 0 && ${line_num} -le ${ln} ]]
+    then
+        item=`cat ${playlist_path} | grep -E ${PLAYABLE_EXT} | gsed -n "${line_num}p"`
+        vn_full=`echo ${item} | awk -F, '{print $1}'`
+        video_url=`echo ${item} | awk -F, '{print $2}'`
+        # 视频名，不带前缀
+        vn=${vn_full%.*}
+        subtitle_args=`cat ${playlist_path} | awk -F, -v vn_full="${vn_full}" -v vn="${vn}" -v vnc=${#vn} '{if ($1 != vn_full && substr($1, 1, vnc) == vn) print "--sub-file="$2}'`
+        if [[ $# -eq 2 && $2 = "-d" ]]
+        then
+            gsed -i "/^${vn}/d" ${playlist_path}
+            try_delete_file ${playlist_path}
+        fi
+        mpv ${video_url} ${subtitle_args}
+    else
+        echo "所选文件超出范围"
+    fi
+}
+
+main() {
+    playlist_name="default"
+    case $1 in
+    pl)
+        # 查看playlist
+        ls ${PLAYLIST_BASE_FOULDER} | while read playlist; do
+            playlist_path="${PLAYLIST_BASE_FOULDER}/${playlist}"
+            item_count=`cat ${playlist_path} | wc -l`
+            echo -e "\033[32m${playlist}${item_count}项\033[0m"
+            cat ${playlist_path} | while read item; do
+                item_name=`echo ${item}`
+                echo -e "  ${item_name%,*}"
+            done
+            echo ""
+        done
+    ;;
+    dl)
+        download_func ${@:2}
+    ;;
+    show)
+        show_func ${@:2}
+    ;;
+    get)
+        get_func ${@:2}
+    ;;
+    play)
+        play_func ${@:2}
+    ;;
+    trans)
+        playable_link=`get_real_path "${2}"`
+        echo -e "${playable_link}\n链接已复制到剪贴板, 可用播放器直接播放"
+        echo "${playable_link}" | `$COPY_COMMAND`
+    ;;
+    *)
+        print_usage
+    ;;
+    esac
+}
+
+preprocess
+main $@
