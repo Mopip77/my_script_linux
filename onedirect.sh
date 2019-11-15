@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 
-##    直接播放先不写了...太难了...就直接复制一下算了
-#
+##   
 #     获取onedrive视频直链或直接播放, 强耦合了rclone, 所以需要传入和rclone一样的相对路径
 #     并且这有一个坑, onedrive的直链带有感叹号!, 所以在url_transform()里需要用sed转义, 
-#   并且在最后的mpv 地址需要echo出来, 而且不能加双引号
+#     并且在最后的mpv 地址需要echo出来, 而且不能加双引号
 ##
 
 PLAYLIST_BASE_FOULDER="${HOME}/.local/onedirect/playlist"
@@ -104,7 +103,7 @@ preprocess() {
 }
 
 download_func() {
-    local onedrive_path=${@: -1}
+    local onedrive_path="${@: -1}"
     exit_if_empty_string ${onedrive_path}
     local regex_expression=""
     while getopts "r:p:" opt; do
@@ -218,21 +217,31 @@ play_func() {
     # 行数
     ln=`cat  ${playlist_path} | grep -E ${PLAYABLE_EXT} | wc -l`
     # 显示可播放列表，用于选择
-    cat ${playlist_path} | grep -E ${PLAYABLE_EXT} | awk -F, '{print "\033[32m["NR"]\033[0m" " " $1}'
+    OLD_IFS="$IFS"
+    IFS=$'\n'
+    for i in `cat ${playlist_path} | grep -E ${PLAYABLE_EXT} | awk -F, '{print "\033[32m["NR"]\033[0m" " " $1}'`; do
+        echo -e "${i}"
+    done
+    IFS=$OLD_IFS
     echo -e "\n请输入需要播放的视频序号："
     read line_num
     if [[ ${line_num} -gt 0 && ${line_num} -le ${ln} ]]
     then
+        # 删除原有播放记录标志，必须在item赋值前清楚，否则无法找到对应的字幕匹配项
+        gsed -i -e 's/\\033\[31m\[\*\]\\033\[0m//g' ${playlist_path}
         item=`cat ${playlist_path} | grep -E ${PLAYABLE_EXT} | gsed -n "${line_num}p"`
         vn_full=`echo ${item} | awk -F, '{print $1}'`
         video_url=`echo ${item} | awk -F, '{print $2}'`
-        # 视频名，不带前缀
+        # 视频名，不带扩展名
         vn=${vn_full%.*}
         subtitle_args=`cat ${playlist_path} | awk -F, -v vn_full="${vn_full}" -v vn="${vn}" -v vnc=${#vn} '{if ($1 != vn_full && substr($1, 1, vnc) == vn) print "--sub-file="$2}'`
         if [[ $# -eq 2 && $2 = "-d" ]]
         then
             gsed -i "/^${vn}/d" ${playlist_path}
             try_delete_file ${playlist_path}
+        else
+            # 标记最后一次播放的视频，由于之前输入的行数是筛选过后的，所以和真实行数不匹配，只能用视频全名来匹配，并且使用@分隔，防止视频名出现/
+            gsed -i -e 's@^'"${vn_full}"'@\\033[31m[*]\\033[0m'"${vn_full}"'@' ${playlist_path}
         fi
         mpv ${video_url} ${subtitle_args}
     else
@@ -249,24 +258,27 @@ main() {
             playlist_path="${PLAYLIST_BASE_FOULDER}/${playlist}"
             item_count=`cat ${playlist_path} | wc -l`
             echo -e "\033[32m${playlist}${item_count}项\033[0m"
-            cat ${playlist_path} | while read item; do
-                item_name=`echo ${item}`
-                echo -e "  ${item_name%,*}"
+
+            OLD_IFS="$IFS"
+            IFS=$'\n'  # 换行
+            for item in `cat ${playlist_path}`; do
+                echo -e "  ${item%,*}"
             done
+            IFS=$OLD_IFS
             echo ""
         done
     ;;
     dl)
-        download_func ${@:2}
+        download_func "${@:2}"
     ;;
     show)
-        show_func ${@:2}
+        show_func "${@:2}"
     ;;
     get)
-        get_func ${@:2}
+        get_func "${@:2}"
     ;;
     play)
-        play_func ${@:2}
+        play_func "${@:2}"
     ;;
     trans)
         playable_link=`get_real_path "${2}"`
@@ -280,4 +292,4 @@ main() {
 }
 
 preprocess
-main $@
+main "$@"
