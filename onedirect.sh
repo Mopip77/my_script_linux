@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 
-##   
+##    直接播放先不写了...太难了...就直接复制一下算了
+#
 #     获取onedrive视频直链或直接播放, 强耦合了rclone, 所以需要传入和rclone一样的相对路径
 #     并且这有一个坑, onedrive的直链带有感叹号!, 所以在url_transform()里需要用sed转义, 
-#     并且在最后的mpv 地址需要echo出来, 而且不能加双引号
+#   并且在最后的mpv 地址需要echo出来, 而且不能加双引号
 ##
 
 PLAYLIST_BASE_FOULDER="${HOME}/.local/onedirect/playlist"
@@ -235,7 +236,7 @@ play_func() {
         # 视频名，不带扩展名
         vn=${vn_full%.*}
         subtitle_args=`cat ${playlist_path} | awk -F, -v vn_full="${vn_full}" -v vn="${vn}" -v vnc=${#vn} '{if ($1 != vn_full && substr($1, 1, vnc) == vn) print "--sub-file="$2}'`
-        if [[ $# -eq 2 && $2 = "-d" ]]
+        if [ ${delete_after_play} == true ]
         then
             gsed -i "/^${vn}/d" ${playlist_path}
             try_delete_file ${playlist_path}
