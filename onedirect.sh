@@ -55,7 +55,7 @@ url_transform() {
             fi
 		else
             # echo "url:$1"
-            local playable_link=$(curl -s --head "$1" | grep Location | awk '{print $2}')
+            local playable_link=$(curl -s --head "$1" | grep location | awk '{print $2}')
             # echo "playable_link:${playable_link}"
 			local params=`echo "${playable_link}" | cut -d'?' -f2`
 			local p1=`echo "${params}" | cut -d'&' -f1`
