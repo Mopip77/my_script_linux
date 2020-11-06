@@ -1,10 +1,9 @@
 #!/bin/bash
 
-###############################################################
-##               自动同步转码程序                            ##
-##                                                           ##
-##  对于高码率的文件（例如flac和wav格式的音频进行转码）      ##
-##  并在对应的转码文件夹下创建完全一样的文件夹结构           ##
+############################################################### 
+##               自动同步转码程序                              ##
+##  对于高码率的文件（例如flac和wav格式的音频进行转码）            ##
+##  并在对应的转码文件夹下创建完全一样的文件夹结构                  ##
 ##                                                           ##
 ###############################################################
 
@@ -15,19 +14,24 @@ SUPPORT_EXT=(flac wav)
 checkSupportExt() {
 	local type="$1"
 	for supportType in ${SUPPORT_EXT[@]}; do
-		[ "${supportType}" = "${type}" ] && return 0
+		[ "${supportType}" = "${type}" ] && exit 0
 	done
 
-	return 1
+	exit 1
 }
 
 encode() {
 	local sourceFile="$1"
 	local targetFolder="$2"
 	local fileName="$3"
+	local targetFile="${targetFolder}/${fileName}.aac"
+	if [ -f "${targetFile}" ]; then
+		echo "[file exists skipping...] ${targetFile}"
+		return 0
+	fi
 
 	echo "transcoding from [${sourceFile}] to [${targetFolder}]"
-	ffmpeg -n -v error -i "${sourceFile}" -ar 44100 -ac 2 -ab 320k "${targetFolder}/${fileName}.aac"
+	ffmpeg -n -v error -i "${sourceFile}" -ar 44100 -ac 2 -ab 320k "${targetFile}"
 }
 
 sync() {
@@ -51,8 +55,10 @@ sync() {
 		if [ -f "${file}" ]; then
 			local ext="${file##*.}"
 			local fn="${f%.*}"
-			if [ -z `checkSupportExt "${ext}"` ]; then
+			if `checkSupportExt "${ext}"`; then
 				encode "${file}" "${targetPath}" "${fn}"
+			else
+				echo "[ext not support] ${file}"
 			fi
 		fi
 	done
