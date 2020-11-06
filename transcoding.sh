@@ -1,19 +1,30 @@
 #!/bin/bash
 
-############################################################### 
-##               自动同步转码程序                              ##
-##  对于高码率的文件（例如flac和wav格式的音频进行转码）            ##
-##  并在对应的转码文件夹下创建完全一样的文件夹结构                  ##
+###############################################################
+##               自动同步转码程序                               ##
+##                                                           ##
+##  对于高码率的文件（例如flac和wav格式的音频进行转码）             ##
+##  并在对应的转码文件夹下创建完全一样的文件夹结构                   ##
 ##                                                           ##
 ###############################################################
 
 ROOT_PATH="/Users/bjhl/gogo"          # 音乐文件夹
 ENCODE_PATH="/Users/bjhl/encode"      # 转码后的文件夹，可以不存在
-SUPPORT_EXT=(flac wav)
+SUPPORT_TRANSCODE_EXT=(flac wav)
+COPY_EXT=(jpeg jpg png)
 
 checkSupportExt() {
 	local type="$1"
-	for supportType in ${SUPPORT_EXT[@]}; do
+	for supportType in ${SUPPORT_TRANSCODE_EXT[@]}; do
+		[ "${supportType}" = "${type}" ] && exit 0
+	done
+
+	exit 1
+}
+
+checkCopyExt() {
+	local type="$1"
+	for supportType in ${COPY_EXIT[@]}; do
 		[ "${supportType}" = "${type}" ] && exit 0
 	done
 
@@ -57,6 +68,9 @@ sync() {
 			local fn="${f%.*}"
 			if `checkSupportExt "${ext}"`; then
 				encode "${file}" "${targetPath}" "${fn}"
+			elif `checkCopyExt "${ext}"`; then
+				echo "[copy file] ${file}"
+				cp "${file}" "${targetPath}/${f}"
 			else
 				echo "[ext not support] ${file}"
 			fi
